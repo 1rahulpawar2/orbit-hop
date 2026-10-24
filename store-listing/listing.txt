@@ -1,0 +1,53 @@
+=== STORE LISTING (copy/paste into Play Console) ===
+
+App name:
+Orbit Hop
+
+Short description (max 80 chars):
+One tap. Two rings. Dodge the blocks and hop your way to a new high score!
+
+Full description:
+Orbit Hop is a fast, simple, addictive one-tap arcade game.
+
+Your glowing comet circles a planet on two orbits. Tap anywhere to hop between the inner and outer ring. Dodge the red blocks, collect gold gems for bonus points, and survive as the orbit speeds up.
+
+★ One-tap controls: anyone can play, few can master
+★ Gets faster the better you do
+★ Collect gems for +3 bonus points
+★ Beat your best score
+★ Plays offline, no sign-up
+★ Tiny download, smooth on any phone
+
+Got a second chance? Watch a short video to continue your run, or remove ads forever with a single purchase.
+
+How long can you stay in orbit?
+
+Category: Game > Arcade
+Tags: arcade, casual, one tap, endless, offline
+
+=== APP CONTENT ANSWERS ===
+
+Privacy policy: your GitHub Pages URL (see README step 5)
+Ads: YES, my app contains ads
+App access: All functionality is available without special access
+Content rating questionnaire: Category "Game", answer No to violence/sexual/drugs/gambling etc. -> rated Everyone/PEGI 3
+Target audience: 13-15, 16-17, 18+  (do NOT pick under 13: that brings extra Families policy rules for ads)
+Government app: No
+Financial features: None
+Health: None
+
+Data safety:
+- Does your app collect or share user data? YES (the AdMob SDK does)
+- Is all data encrypted in transit? YES
+- Can users request data deletion? No account exists; answer per Play's form
+- Data types (collected, and shared with Google for Advertising/Analytics, not required, processed ephemerally: No):
+    * Location > Approximate location (from IP address)
+    * App activity > App interactions
+    * App info and performance > Diagnostics
+    * Device or other IDs > Device or other IDs (advertising ID)
+- Purposes: Advertising or marketing, Analytics, Fraud prevention/security
+(Google's guide: https://developers.google.com/admob/android/privacy/play-data-disclosure)
+
+Advertising ID declaration (Policy > App content > Advertising ID): YES, uses advertising ID, purpose: Advertising or marketing, Analytics.
+
+In-app products: "Remove ads", ID remove_ads, one-time, e.g. $1.99

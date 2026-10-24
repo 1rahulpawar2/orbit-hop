@@ -1,0 +1,76 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Google's official test ad units: always used for debug builds so you never click your own real ads.
+def TEST_BANNER = 'ca-app-pub-3940256099942544/9214589741'
+def TEST_INTERSTITIAL = 'ca-app-pub-3940256099942544/1033173712'
+def TEST_REWARDED = 'ca-app-pub-3940256099942544/5224354917'
+
+def envVersionCode = System.getenv('VERSION_CODE')
+def keystorePath = System.getenv('KEYSTORE_FILE')
+
+android {
+    namespace 'com.orbithop.game'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId project.property('APP_ID')
+        minSdk 24
+        targetSdk 36
+        versionCode envVersionCode ? envVersionCode.toInteger() : 1
+        versionName "1.0." + (envVersionCode ?: "1")
+
+        manifestPlaceholders = [admobAppId: project.property('ADMOB_APP_ID')]
+        buildConfigField 'String', 'REMOVE_ADS_PRODUCT_ID', "\"${project.property('REMOVE_ADS_PRODUCT_ID')}\""
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEY_ALIAS')
+                keyPassword System.getenv('KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (keystorePath) signingConfig signingConfigs.release
+            buildConfigField 'String', 'BANNER_ID', "\"${project.property('ADMOB_BANNER_ID')}\""
+            buildConfigField 'String', 'INTERSTITIAL_ID', "\"${project.property('ADMOB_INTERSTITIAL_ID')}\""
+            buildConfigField 'String', 'REWARDED_ID', "\"${project.property('ADMOB_REWARDED_ID')}\""
+        }
+        debug {
+            buildConfigField 'String', 'BANNER_ID', "\"${TEST_BANNER}\""
+            buildConfigField 'String', 'INTERSTITIAL_ID', "\"${TEST_INTERSTITIAL}\""
+            buildConfigField 'String', 'REWARDED_ID', "\"${TEST_REWARDED}\""
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
+
+dependencies {
+    implementation 'androidx.activity:activity:1.10.1'
+    implementation 'androidx.core:core:1.16.0'
+    implementation 'com.google.android.gms:play-services-ads:25.5.0'
+    implementation 'com.android.billingclient:billing:9.1.0'
+}
