@@ -54,11 +54,16 @@ public class GameView extends View implements Choreographer.FrameCallback {
     private static final int COL_OFF = Color.rgb(71, 85, 105);
     private static final int COL_CARD = Color.rgb(23, 30, 66);
 
-    // planet colours: [0] Classic, [1] Moon, [2] Mars, [3] Saturn
+    // planet colours: [0] Classic, then one per world theme (Moon, Mars, Saturn, Neptune, Nebula,
+    // Emerald, Black Hole, Frost, Sun Gate); worlds after 9 reuse them.
     private static final int[] PLANET_LIGHT = {
-            Color.rgb(129, 140, 248), Color.rgb(226, 232, 240), Color.rgb(253, 164, 105), Color.rgb(253, 230, 138)};
+            Color.rgb(129, 140, 248), Color.rgb(226, 232, 240), Color.rgb(253, 164, 105), Color.rgb(253, 230, 138),
+            Color.rgb(125, 211, 252), Color.rgb(244, 114, 182), Color.rgb(110, 231, 183), Color.rgb(196, 181, 253),
+            Color.rgb(224, 242, 254), Color.rgb(254, 240, 138)};
     private static final int[] PLANET_DARK = {
-            Color.rgb(49, 46, 129), Color.rgb(71, 85, 105), Color.rgb(154, 52, 18), Color.rgb(146, 64, 14)};
+            Color.rgb(49, 46, 129), Color.rgb(71, 85, 105), Color.rgb(154, 52, 18), Color.rgb(146, 64, 14),
+            Color.rgb(30, 64, 175), Color.rgb(131, 24, 67), Color.rgb(6, 95, 70), Color.rgb(15, 10, 30),
+            Color.rgb(71, 85, 105), Color.rgb(234, 88, 12)};
 
     private static final String[] SKIN_NAMES = {"Mint", "Sky", "Violet", "Lime", "Star", "Ember", "Rainbow", "Ghost"};
     private static final int[] SKIN_COLORS = {
@@ -69,6 +74,7 @@ public class GameView extends View implements Choreographer.FrameCallback {
 
     private static final float MOVE_AMP = 0.22f; // how far moving blocks slide (radians)
     private static final int FREE_GEMS = 15;     // gems per "watch a video" in the shop
+    private static final int DAILY_UNLOCK = 4;   // daily challenge appears after clearing level 3
 
     // ------------------------------------------------------------ state
 
@@ -188,7 +194,7 @@ public class GameView extends View implements Choreographer.FrameCallback {
                 goToMenu();
                 return true;
             default:
-                if (level != null) goToLevels(pageFor(level.number));
+                if (level != null && !level.isDaily()) goToLevels(pageFor(level.number));
                 else goToMenu();
                 return true;
         }
@@ -239,8 +245,8 @@ public class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private int theme() {
-        if (state == State.LEVELS) return worldPage + 1;
-        return level != null ? level.world : 0;
+        if (state == State.LEVELS) return Level.theme(worldPage + 1);
+        return level != null ? Level.theme(level.world) : 0;
     }
 
     private void ensurePlanetShader() {
@@ -253,7 +259,7 @@ public class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private static int pageFor(int levelNumber) {
-        return (Math.max(1, Math.min(Level.COUNT, levelNumber)) - 1) / Level.PER_WORLD;
+        return (Math.max(1, levelNumber) - 1) / Level.PER_WORLD;
     }
 
     // ------------------------------------------------------------ navigation
@@ -291,8 +297,11 @@ public class GameView extends View implements Choreographer.FrameCallback {
         stateTimer = 0;
     }
 
+    /** Starts a level after a possible interstitial, tuned to this player's skill. */
     private void requestLevel(Level l) {
-        host.beforeNewGame(() -> beginLevel(l));
+        final Level tuned = l == null ? null
+                : l.isDaily() ? l.base.tuned(1f + prog.skill()) : l.base.tuned(prog.difficulty(l.number));
+        host.beforeNewGame(() -> beginLevel(tuned));
     }
 
     /** Starts a level (or Classic if null), showing the tutorial / intro card first if needed. */
@@ -486,11 +495,22 @@ public class GameView extends View implements Choreographer.FrameCallback {
         if (third) stars++;
         thirdEarned = third;
         starsEarned = stars;
-        firstClear = prog.stars(level.number) == 0;
-        int bonus = stars * 2 + (firstClear ? 10 : 0);
+        int bonus;
+        if (level.isDaily()) {
+            firstClear = !prog.dailyChallengeDone();
+            bonus = firstClear ? 30 : stars * 2;
+            prog.markDailyChallengeDone();
+        } else {
+            firstClear = prog.stars(level.number) == 0;
+            bonus = stars * 2 + (firstClear ? 10 : 0);
+            prog.recordClear(level.number);
+            prog.recordLevel(level.number, stars);
+            if (firstClear && level.number % Level.PER_WORLD == 0) {
+                showToast("New world unlocked: " + Level.worldName(level.world + 1) + "!");
+            }
+        }
         prog.addGems(bonus);
         earned += bonus;
-        prog.recordLevel(level.number, stars);
         state = State.LEVEL_DONE;
         stateTimer = 0;
         float px = cx + (float) Math.cos(angle) * radius, py = cy + (float) Math.sin(angle) * radius;
@@ -509,6 +529,7 @@ public class GameView extends View implements Choreographer.FrameCallback {
             prog.setBest(score);
             newBest = true;
         }
+        if (level != null && !level.isDaily()) prog.recordFail(level.number);
         state = State.DYING;
         stateTimer = 0f;
     }
@@ -938,12 +959,24 @@ public class GameView extends View implements Choreographer.FrameCallback {
         float y = h * 0.70f;
         float sp = unit * 0.135f;
         int next = prog.unlocked();
-        String journey = prog.allCleared() ? "▶  Journey  ·  All clear!" : "▶  Journey  ·  Level " + next;
-        wideButton(c, journey, y, 0, () -> goToLevels(pageFor(next)));
+        wideButton(c, "▶  Journey  ·  Level " + next, y, 0, () -> goToLevels(pageFor(next)));
         y += sp;
-        wideButton(c, "Classic  ·  Best " + prog.best(), y, 1, () -> requestLevel(null));
+
+        if (next < DAILY_UNLOCK) {
+            wideButton(c, "Daily challenge  ·  unlocks at level " + DAILY_UNLOCK, y, 1,
+                    () -> showToast("Clear level " + (DAILY_UNLOCK - 1) + " to unlock"));
+        } else if (!prog.dailyChallengeDone()) {
+            wideButton(c, "★  Daily challenge  ·  +30 gems", y, 2,
+                    () -> requestLevel(Level.daily(Progress.today(), prog.unlocked())));
+        } else {
+            wideButton(c, "Daily challenge  ✓  ·  new one tomorrow", y, 1,
+                    () -> requestLevel(Level.daily(Progress.today(), prog.unlocked())));
+        }
         y += sp;
-        wideButton(c, "Shop  ·  Skins", y, 1, this::goToShop);
+
+        button(c, "Classic  ·  " + prog.best(), cx - unit * 0.2f, y, unit * 0.37f, unit * 0.11f, 1,
+                () -> requestLevel(null));
+        button(c, "Shop", cx + unit * 0.2f, y, unit * 0.37f, unit * 0.11f, 1, this::goToShop);
         y += sp * 0.85f;
 
         String price = host.removeAdsPrice();
@@ -1014,13 +1047,12 @@ public class GameView extends View implements Choreographer.FrameCallback {
         drawGemCounter(c);
         int world = worldPage + 1;
         centerText(c, "WORLD " + world, h * 0.07f, unit * 0.04f, COL_DIM);
-        centerText(c, Level.WORLD_NAMES[worldPage].toUpperCase(), h * 0.07f + unit * 0.1f, unit * 0.1f, COL_TEXT);
+        centerText(c, Level.worldName(world).toUpperCase(), h * 0.07f + unit * 0.1f, unit * 0.1f, COL_TEXT);
         float sy = h * 0.07f + unit * 0.17f;
         drawStar(c, cx - unit * 0.09f, sy - unit * 0.015f, unit * 0.025f, COL_GEM);
         centerText(c, prog.starsInWorld(world) + " / " + (Level.PER_WORLD * 3), cx + unit * 0.03f, sy, unit * 0.04f, COL_GEM);
 
         int unlocked = prog.unlocked();
-        boolean allClear = prog.allCleared();
         float tile = unit * 0.15f, gap = unit * 0.03f;
         float total = 5 * tile + 4 * gap;
         float x0 = cx - total / 2, y0 = cy - tile - gap / 2;
@@ -1034,7 +1066,7 @@ public class GameView extends View implements Choreographer.FrameCallback {
             if (open) {
                 fill.setColor(Color.rgb(30, 41, 82));
                 c.drawRoundRect(b.r, rad, rad, fill);
-                boolean current = n == unlocked && !allClear;
+                boolean current = n == unlocked;
                 stroke.setColor(current ? COL_ACCENT : Color.argb(140, 165, 180, 252));
                 stroke.setStrokeWidth(unit * (current ? 0.007f : 0.004f));
                 c.drawRoundRect(b.r, rad, rad, stroke);
@@ -1055,11 +1087,11 @@ public class GameView extends View implements Choreographer.FrameCallback {
 
         float ay = y0 + 2 * tile + gap + unit * 0.13f;
         if (worldPage > 0) {
-            button(c, "◀  " + Level.WORLD_NAMES[worldPage - 1], cx - unit * 0.2f, ay, unit * 0.36f, unit * 0.1f, 1,
+            button(c, "◀  " + Level.worldName(worldPage), cx - unit * 0.2f, ay, unit * 0.36f, unit * 0.1f, 1,
                     () -> worldPage--);
         }
-        if (worldPage < Level.WORLD_NAMES.length - 1) {
-            button(c, Level.WORLD_NAMES[worldPage + 1] + "  ▶", cx + unit * 0.2f, ay, unit * 0.36f, unit * 0.1f, 1,
+        if (worldPage <= pageFor(unlocked)) { // can peek one world ahead
+            button(c, Level.worldName(worldPage + 2) + "  ▶", cx + unit * 0.2f, ay, unit * 0.36f, unit * 0.1f, 1,
                     () -> worldPage++);
         }
         wideButton(c, "Back", Math.max(ay + unit * 0.16f, h * 0.86f), 1, this::goToMenu);
@@ -1217,7 +1249,7 @@ public class GameView extends View implements Choreographer.FrameCallback {
         }
         float pulse = 0.6f + 0.4f * (float) Math.sin(time * 4);
         centerText(c, "Tap to start", bottom - unit * 0.06f, unit * 0.05f, withAlpha(COL_TEXT, (int) (255 * pulse)));
-        centerText(c, "LEVEL " + level.number + "  ·  " + level.goalText(), bottom + unit * 0.08f, unit * 0.04f, COL_DIM);
+        centerText(c, level.title() + "  ·  " + level.goalText(), bottom + unit * 0.08f, unit * 0.04f, COL_DIM);
     }
 
     private void drawHud(Canvas c) {
@@ -1226,7 +1258,7 @@ public class GameView extends View implements Choreographer.FrameCallback {
             centerText(c, "BEST " + prog.best(), unit * 0.27f, unit * 0.04f, COL_DIM);
             return;
         }
-        centerText(c, "LEVEL " + level.number, unit * 0.09f, unit * 0.038f, COL_DIM);
+        centerText(c, level.title(), unit * 0.09f, unit * 0.038f, COL_DIM);
         centerText(c, progressText(), unit * 0.19f, unit * 0.09f, COL_TEXT);
         float bw = unit * 0.5f, bh = unit * 0.014f, by = unit * 0.235f;
         tmp.set(cx - bw / 2, by, cx + bw / 2, by + bh);
@@ -1261,13 +1293,16 @@ public class GameView extends View implements Choreographer.FrameCallback {
             centerText(c, String.valueOf(score), h * 0.2f + unit * 0.22f, unit * 0.2f, COL_TEXT);
             centerText(c, newBest ? "NEW BEST!" : "BEST " + prog.best(), h * 0.2f + unit * 0.31f, unit * 0.05f, COL_GEM);
         } else {
-            centerText(c, "LEVEL " + level.number, h * 0.16f, unit * 0.045f, COL_DIM);
+            centerText(c, level.title(), h * 0.16f, unit * 0.045f, COL_DIM);
             centerText(c, "SO CLOSE!", h * 0.16f + unit * 0.11f, unit * 0.1f, COL_BLOCK);
             centerText(c, progressText(), h * 0.16f + unit * 0.24f, unit * 0.09f, COL_TEXT);
             centerText(c, level.goalText(), h * 0.16f + unit * 0.31f, unit * 0.04f, COL_DIM);
         }
         if (earned > 0) {
             centerText(c, "+" + earned + " gems collected", h * 0.2f + unit * 0.4f, unit * 0.04f, COL_GEM);
+        }
+        if (level != null && !level.isDaily() && prog.fails(level.number) >= 2) {
+            centerText(c, "Tip: this level gets a little easier each try", h * 0.2f + unit * 0.47f, unit * 0.034f, COL_DIM);
         }
 
         by = h * 0.62f;
@@ -1280,13 +1315,13 @@ public class GameView extends View implements Choreographer.FrameCallback {
         final Level l = level;
         wideButton(c, l == null ? "Play again" : "Retry", by, canContinue ? 1 : 0, () -> requestLevel(l));
         by += unit * 0.135f;
-        if (l == null) wideButton(c, "Menu", by, 1, this::goToMenu);
+        if (l == null || l.isDaily()) wideButton(c, "Menu", by, 1, this::goToMenu);
         else wideButton(c, "Levels", by, 1, () -> goToLevels(pageFor(l.number)));
     }
 
     private void drawLevelDone(Canvas c) {
         dim(c, 150);
-        centerText(c, "LEVEL " + level.number, h * 0.1f, unit * 0.045f, COL_DIM);
+        centerText(c, level.title(), h * 0.1f, unit * 0.045f, COL_DIM);
         centerText(c, "COMPLETE!", h * 0.1f + unit * 0.11f, unit * 0.11f, COL_ACCENT);
 
         float sy = h * 0.1f + unit * 0.27f;
@@ -1319,10 +1354,10 @@ public class GameView extends View implements Choreographer.FrameCallback {
 
         float by = gy + unit * 0.12f;
         final Level l = level;
-        if (l.number < Level.COUNT) {
-            wideButton(c, "Next level  ▶", by, 0, () -> requestLevel(Level.get(l.number + 1)));
+        if (l.isDaily()) {
+            wideButton(c, "Journey  ▶", by, 0, () -> goToLevels(pageFor(prog.unlocked())));
         } else {
-            wideButton(c, "All levels cleared!", by, 0, () -> goToLevels(pageFor(l.number)));
+            wideButton(c, "Next level  ▶", by, 0, () -> requestLevel(Level.get(l.number + 1)));
         }
         by += unit * 0.135f;
         if (!doubled && earned > 0 && host.canOfferContinue()) {
@@ -1336,7 +1371,8 @@ public class GameView extends View implements Choreographer.FrameCallback {
             by += unit * 0.135f;
         }
         button(c, "Replay", cx - unit * 0.2f, by, unit * 0.37f, unit * 0.1f, 1, () -> requestLevel(l));
-        button(c, "Levels", cx + unit * 0.2f, by, unit * 0.37f, unit * 0.1f, 1, () -> goToLevels(pageFor(l.number + 1)));
+        if (l.isDaily()) button(c, "Menu", cx + unit * 0.2f, by, unit * 0.37f, unit * 0.1f, 1, this::goToMenu);
+        else button(c, "Levels", cx + unit * 0.2f, by, unit * 0.37f, unit * 0.1f, 1, () -> goToLevels(pageFor(l.number + 1)));
     }
 
     // ---- ui helpers

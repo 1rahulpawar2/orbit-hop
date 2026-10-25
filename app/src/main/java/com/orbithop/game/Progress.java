@@ -31,8 +31,7 @@ final class Progress {
 
     // ---- Journey levels
     int stars(int level) { return p.getInt("stars_" + level, 0); }
-    int unlocked() { return Math.min(Level.COUNT, p.getInt("unlocked", 1)); }
-    boolean allCleared() { return p.getInt("unlocked", 1) > Level.COUNT; }
+    int unlocked() { return p.getInt("unlocked", 1); }
     int starsInWorld(int world) {
         int sum = 0;
         for (int i = (world - 1) * Level.PER_WORLD + 1; i <= world * Level.PER_WORLD; i++) sum += stars(i);
@@ -44,6 +43,37 @@ final class Progress {
         if (level + 1 > p.getInt("unlocked", 1)) e.putInt("unlocked", level + 1);
         e.apply();
     }
+
+    // ---- Adaptive difficulty ("just hard enough")
+    // Each failed attempt at a level makes that level a little easier (up to 18%).
+    // Clearing levels first try nudges future levels a little harder (up to +6%);
+    // struggling nudges them easier (down to -10%).
+    int fails(int level) { return p.getInt("fails_" + level, 0); }
+
+    void recordFail(int level) {
+        p.edit().putInt("fails_" + level, fails(level) + 1)
+                .putFloat("skill", clampSkill(skill() - 0.004f)).apply();
+    }
+
+    void recordClear(int level) {
+        float s = skill() + (fails(level) == 0 ? 0.012f : -0.002f * Math.min(5, fails(level)));
+        p.edit().putInt("fails_" + level, 0).putFloat("skill", clampSkill(s)).apply();
+    }
+
+    float skill() { return p.getFloat("skill", 0f); }
+
+    private static float clampSkill(float s) { return Math.max(-0.10f, Math.min(0.06f, s)); }
+
+    /** Speed multiplier for a level: 1 = as designed. */
+    float difficulty(int level) {
+        float ease = Math.min(0.18f, 0.045f * Math.max(0, fails(level) - 1));
+        float skillPart = level > 5 ? skill() : 0f;
+        return (1f + skillPart) * (1f - ease);
+    }
+
+    // ---- Daily challenge (a new generated level every day)
+    boolean dailyChallengeDone() { return p.getLong("dc_day", -1) == today(); }
+    void markDailyChallengeDone() { p.edit().putLong("dc_day", today()).apply(); }
 
     // ---- Tutorial and "new mechanic" cards
     boolean tutorialDone() { return p.getBoolean("tutorial_done", false); }
